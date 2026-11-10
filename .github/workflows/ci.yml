@@ -1,0 +1,43 @@
+# Stand-in for apache/arrow-rs's CI workflow, for testing the fork CI bridge.
+# Fork PRs to main run only a lightweight check upstream, as in arrow-rs.
+# Fork pushes and manual runs run the "full" suite, simulated below:
+#   ci-sleep          seconds to sleep, so a run can be observed in progress
+#   ci-fail           present: the suite fails
+#   ci-fail-attempt-1 present: the first attempt fails and a rerun passes
+name: CI
+
+on:
+  pull_request:
+  push:
+    paths-ignore:
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lightweight checks
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-slim
+    steps:
+      - run: echo "PR from ${{ github.event.pull_request.head.repo.full_name }}"
+
+  test:
+    name: Full suite
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Simulated test suite
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          sleep "$(cat ci-sleep 2>/dev/null || echo 5)"
+          if [ -f ci-fail ]; then echo 'ci-fail is present'; exit 1; fi
+          if [ -f ci-fail-attempt-1 ] && [ "$RUN_ATTEMPT" = 1 ]; then echo 'first attempt fails'; exit 1; fi
+          echo 'suite passed'
