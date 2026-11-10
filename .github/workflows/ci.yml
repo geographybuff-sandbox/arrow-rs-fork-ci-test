@@ -4,6 +4,7 @@
 #   ci-sleep          seconds to sleep, so a run can be observed in progress
 #   ci-fail           present: the suite fails
 #   ci-fail-attempt-1 present: the first attempt fails and a rerun passes
+#   ci-fail-push      present: push runs fail and manual runs pass
 name: CI
 
 on:
@@ -36,8 +37,10 @@ jobs:
       - name: Simulated test suite
         env:
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT: ${{ github.event_name }}
         run: |
           sleep "$(cat ci-sleep 2>/dev/null || echo 5)"
           if [ -f ci-fail ]; then echo 'ci-fail is present'; exit 1; fi
           if [ -f ci-fail-attempt-1 ] && [ "$RUN_ATTEMPT" = 1 ]; then echo 'first attempt fails'; exit 1; fi
+          if [ -f ci-fail-push ] && [ "$EVENT" = push ]; then echo 'push runs fail'; exit 1; fi
           echo 'suite passed'
