@@ -40,11 +40,32 @@ Raw log with every check and run ID: [evidence/log.md](evidence/log.md).
 
 Superseded heads keep their last state (4b's head kept `in_progress`). The current bridge does the same: both only update the current head.
 
+## Fix for difference 2 (apache/infrastructure-actions#1512)
+
+[`actions/fork-ci-fixed`](actions/fork-ci-fixed) is fork-ci v1.0.0 with `details_url` left out of the unchanged-result comparison. Three bridges run it here:
+- [`fork_ci_status.yml`](.github/workflows/fork_ci_status.yml): the proposed arrow-rs bridge.
+- [`ozone_fork_ci_status.yml`](.github/workflows/ozone_fork_ci_status.yml) and [`ozone_fork_ci_ping.yml`](.github/workflows/ozone_fork_ci_ping.yml): copies of apache/ozone's.
+- [`gluten_fork_ci_status.yml`](.github/workflows/gluten_fork_ci_status.yml) and [`gluten_fork_ci_signal.yml`](.github/workflows/gluten_fork_ci_signal.yml): copies of apache/gluten#13535's, with three action calls.
+
+Each row is one manual sweep of every bridge, with log lines `Fork CI: N processed, W checks written` (one per action call). Full log: [evidence/log-fix.md](evidence/log-fix.md).
+
+| Sweep | arrow-rs style | Ozone style | Gluten style (3 calls) |
+|---|---|---|---|
+| v1.0.0, nothing changed (before the fix) | [4 written](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42892310046), [4 written](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42892483009) | n/a | n/a |
+| Fixed, first sweep: arrow-rs-style checks already exist; the other check names are new | [0 of 4](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899567701) | [4 of 4](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899576985) | [4 of 4 per call](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899587920) |
+| Fixed, nothing changed | [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899724058), [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899847199) | [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899734477), [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899856898) | [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899750995), [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42899867630) |
+| Fixed, PR #6's fork runs changed from success to failure | [1 of 5](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42900457502) | [1 of 5](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42900467053) | [1 of 5 per call](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42900475830) |
+| Fixed, nothing changed after that | [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42900577571) | [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42900586207) | [0](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42900594982) |
+
+All five checks on [PR #6](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/pull/6) show `failure`, matching its three fork runs. In the action's own tests, the fake Checks API now stores `details_url` the way GitHub does. With that change, `unchanged observations and repeated notifications do not write` and `unchanged scheduled observations do not re-read the PR` fail on v1.0.0 and pass with the fix. All 67 bridge tests and 21 composite-action tests pass.
+
 ## Not explained
 
 - One manual sweep, [42888494484](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42888494484), marked the fork-ci step failed, hung in "Complete job" until the 10-minute timeout cancelled it, and left no log. The same situation (a PR targeting `release`) succeeded on retry ([42892095045](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/42892095045)), and every other sweep succeeded.
 
 ## Not tested
+
+- Scheduled sweeps: GitHub never fired this repository's cron on 2026-11-10, so every sweep here was dispatched manually. Scheduled runs use the same code path.
 
 - arrow-rs's real CI, merge queue and runner groups. The bridge only reads the fork CI's run status, so the stand-in workflow is enough for the bridge's behavior.
 - Rate limits at arrow-rs's scale (150+ open fork PRs).
