@@ -1,0 +1,25 @@
+# Copy of apache/ozone's fork-ci-ping.yaml (2026-11-10), with the owner guard changed.
+name: Fork CI ping
+
+on:
+  pull_request:
+    types:
+      - edited
+      - opened
+      - ready_for_review
+      - reopened
+      - synchronize
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  ping:
+    if: github.repository_owner == 'geographybuff-sandbox'
+    runs-on: ubuntu-slim
+    timeout-minutes: 1
+    steps:
+      - name: ping
+        run: |
+          echo 'This job just pings Ozone-style fork CI status that the PR was created or updated.'

@@ -1,0 +1,39 @@
+# Copy of apache/gluten#13535's fork_ci_status.yml (2026-11-10): repository guard, mirrored
+# workflows, check names and the action reference changed; schedule removed (sweeps are dispatched).
+name: Gluten-style fork CI status
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [Fork CI signal]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: write
+  pull-requests: read
+
+concurrency:
+  group: gluten-fork-ci-status
+  cancel-in-progress: false
+
+jobs:
+  bridge:
+    if: github.repository == 'geographybuff-sandbox/arrow-rs-fork-ci-test'
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: geographybuff-sandbox/arrow-rs-fork-ci-test/actions/fork-ci-fixed@1330feb5fc4fe2b3e9dc3b2e49ea12915183956f
+        with:
+          workflow: ci.yml
+          check-name: Velox Backend (x86) in fork
+      - uses: geographybuff-sandbox/arrow-rs-fork-ci-test/actions/fork-ci-fixed@1330feb5fc4fe2b3e9dc3b2e49ea12915183956f
+        if: ${{ !cancelled() }}
+        with:
+          workflow: ci_arm.yml
+          check-name: Velox Backend (ARM) in fork
+      - uses: geographybuff-sandbox/arrow-rs-fork-ci-test/actions/fork-ci-fixed@1330feb5fc4fe2b3e9dc3b2e49ea12915183956f
+        if: ${{ !cancelled() }}
+        with:
+          workflow: ci_kafka.yml
+          check-name: Velox Kafka in fork

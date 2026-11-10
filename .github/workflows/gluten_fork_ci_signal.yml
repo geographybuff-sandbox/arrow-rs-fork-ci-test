@@ -1,0 +1,18 @@
+# Copy of apache/gluten#13535's fork_ci_signal.yml (2026-11-10), with the repository guard changed.
+name: Fork CI signal
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  signal:
+    if: github.repository == 'geographybuff-sandbox/arrow-rs-fork-ci-test'
+    runs-on: ubuntu-slim
+    timeout-minutes: 1
+    steps:
+      - run: echo 'gluten_fork_ci_status.yml reads this pull request through the GitHub API.'

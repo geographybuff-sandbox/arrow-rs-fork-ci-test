@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: apache/infrastructure-actions/fork-ci@36e391618baf31f50c5a7a7347faf00cba6cf085  # fork-ci/v1.0.0
+      - uses: geographybuff-sandbox/arrow-rs-fork-ci-test/actions/fork-ci-fixed@1330feb5fc4fe2b3e9dc3b2e49ea12915183956f  # fork-ci/v1.0.0 + apache/infrastructure-actions#1512 fix
         with:
           workflow: ci.yml
           check-name: CI (fork)
