@@ -84,3 +84,24 @@ jobs:
             [ "$pass" -eq "$3" ] || ok=false
           done
           $ok
+
+  base-suite-mutations:
+    name: Previous head's suite under two mutations (expect 2 failures, then 0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { repository: '${{ env.REPO }}', ref: '${{ inputs.base }}', persist-credentials: false }
+      - name: Bridge sends no details_url (expect 2 failures, both checking the request)
+        run: |
+          cp fork-ci/bridge.cjs /tmp/orig.cjs
+          sed -E -i '/^\s*details_url: (details|workflowUrl|`\$\{server\}).*,$/d; s/, details_url: details,/,/' fork-ci/bridge.cjs
+          test "$(grep -c 'details_url:' fork-ci/bridge.cjs)" -eq 0
+          set +e; node --test --test-reporter=spec fork-ci/bridge.test.cjs > out.txt; set -e
+          sed '/^✖ failing tests:/,$d' out.txt | grep '^✖ ' || true
+          test "$(sed '/^✖ failing tests:/,$d' out.txt | grep -c '^✖ ')" -eq 2
+          cp /tmp/orig.cjs fork-ci/bridge.cjs
+      - name: Fake throws on updating a check without html_url (expect 0 failures)
+        run: |
+          sed -i 's#const check = checks.find((c) => c.id === p.check_run_id);#&\n        if (!check.html_url) throw new Error("NO_HTML_URL");#' fork-ci/bridge.test.cjs
+          grep -q NO_HTML_URL fork-ci/bridge.test.cjs
+          node --test fork-ci/bridge.test.cjs
