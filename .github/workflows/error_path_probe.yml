@@ -1,0 +1,48 @@
+# Probe for the review of apache/infrastructure-actions#1514: run a fork-ci
+# bridge with the fork Actions API forced to fail (HTTP 503), so the
+# "Cannot read fork CI" payload is written to real checks. Shows what GitHub
+# stores for that payload's details_url and summary, and whether a repeated
+# failure writes again. Manual only; uses its own check names.
+name: Error-path probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Bridge to run (pr1514 = PR head c800b9d, fix = proposed follow-up)
+        type: choice
+        options: [pr1514, fix]
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: probes
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        env:
+          FORK_CI_WORKFLOW: ci.yml
+          FORK_CI_CHECK_NAME: Error probe (${{ inputs.version }})
+          FORK_CI_SWEEP_SIZE: '100'
+          VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const { bridge } = require(`${process.env.GITHUB_WORKSPACE}/probes/error-path/${process.env.VERSION}/bridge.cjs`);
+            const failing = Object.assign(new Error("probe: forced fork API failure"), { status: 503 });
+            const forced = { ...github, rest: { ...github.rest, actions: { ...github.rest.actions,
+              listWorkflowRuns: async () => { throw failing; } } } };
+            const counts = await bridge({ github: forced, context, core });
+            core.notice(`counts ${JSON.stringify(counts)}`);
