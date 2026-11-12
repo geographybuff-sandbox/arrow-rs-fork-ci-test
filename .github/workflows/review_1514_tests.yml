@@ -1,0 +1,86 @@
+# Tests for the follow-up commit on apache/infrastructure-actions#1514, run
+# against the commit as pushed to geographybuff/infrastructure-actions.
+# Manual only. Each job checks one claim and fails if the result differs.
+name: PR 1514 follow-up tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Follow-up commit on geographybuff/infrastructure-actions
+        required: true
+      base:
+        description: The PR's previous head (c800b9d)
+        default: c800b9da3bfc45371b71ca2ebf84e036a0a449d8
+
+permissions:
+  contents: read
+
+env:
+  REPO: geographybuff/infrastructure-actions
+
+jobs:
+  bridge-tests:
+    name: Bridge tests at the follow-up commit (expect 68 of 68)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { repository: '${{ env.REPO }}', ref: '${{ inputs.commit }}', persist-credentials: false }
+      - run: node --version && node --test fork-ci/bridge.test.cjs
+
+  new-tests-on-base:
+    name: Follow-up tests against the previous head's bridge (expect 8 failures)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { repository: '${{ env.REPO }}', ref: '${{ inputs.commit }}', fetch-depth: 0, persist-credentials: false }
+      - name: Run the new tests on the old bridge
+        run: |
+          git show "${{ inputs.base }}:fork-ci/bridge.cjs" > fork-ci/bridge.cjs
+          set +e
+          node --test --test-reporter=spec fork-ci/bridge.test.cjs | tee out.txt
+          set -e
+          fails=$(grep -c '^✖ ' <(sed '/^✖ failing tests:/,$d' out.txt))
+          echo "failing tests: $fails"
+          test "$fails" -eq 8
+
+  composite-tests:
+    name: Composite action tests at the follow-up commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { repository: '${{ env.REPO }}', ref: '${{ inputs.commit }}', persist-credentials: false }
+      - run: pip install uv && uv run --frozen pytest -q fork-ci/test_action.py
+
+  prek:
+    name: prek on the changed files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { repository: '${{ env.REPO }}', ref: '${{ inputs.commit }}', fetch-depth: 0, persist-credentials: false }
+      - run: pip install uv && uvx prek run --files $(git diff --name-only "${{ inputs.base }}" HEAD)
+
+  review-probes:
+    name: Review probes on v1.0.0, previous head and follow-up (expect 2, 3 and 8 of 8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { sparse-checkout: probes, persist-credentials: false }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: { repository: '${{ env.REPO }}', ref: '${{ inputs.commit }}', fetch-depth: 0, path: ia, persist-credentials: false }
+      - name: Run the probes against each bridge
+        run: |
+          cd probes/review-1514
+          cat harness.cjs claims.test.cjs > run.test.cjs
+          ok=true
+          for spec in "v1.0.0 36e39161 2" "previous-head ${{ inputs.base }} 3" "follow-up ${{ inputs.commit }} 8"; do
+            set -- $spec
+            git -C "$GITHUB_WORKSPACE/ia" show "$2:fork-ci/bridge.cjs" > "/tmp/$1.cjs"
+            echo "::group::$1 ($2)"
+            set +e; LABEL=$1 BRIDGE=/tmp/$1.cjs node --test --test-reporter=spec run.test.cjs | tee "/tmp/$1.txt"; set -e
+            echo "::endgroup::"
+            pass=$(grep -c '^✔ ' "/tmp/$1.txt")
+            echo "$1: $pass of 8 pass (expected $3)"
+            [ "$pass" -eq "$3" ] || ok=false
+          done
+          $ok
