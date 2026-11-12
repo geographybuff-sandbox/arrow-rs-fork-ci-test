@@ -70,3 +70,18 @@ All five checks on [PR #6](https://github.com/geographybuff-sandbox/arrow-rs-for
 - arrow-rs's real CI, merge queue and runner groups. The bridge only reads the fork CI's run status, so the stand-in workflow is enough for the bridge's behavior.
 - Rate limits at arrow-rs's scale (150+ open fork PRs).
 - First-time contributor approval of the upstream PR run.
+
+## Review of apache/infrastructure-actions#1514 (2026-11-12)
+
+kumarUjjawal's [review](https://github.com/apache/infrastructure-actions/pull/1514) made five comments and proposed no code. These probes test comments 1, 3, 4 and 5.
+
+**Real GitHub.** The missing-run checks from steps 4f and 4g (v1.0.0) show what GitHub stores: [neutral](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/runs/130081533406) and [action_required](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/runs/130082198954) both have `details_url` = their own page, and neither summary links the fork workflow. The API-error payload had not been written before. [`error_path_probe.yml`](.github/workflows/error_path_probe.yml) runs a bridge with the fork API forced to return 503, writing to its own check names:
+
+| Bridge | First failing sweep | Second failing sweep | What [PR #6](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/pull/6) shows |
+|---|---|---|---|
+| PR #1514 head (c800b9d) | [5 writes](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/43222614111) | [0 writes](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/43222817558) | [check](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/runs/131197838087): `details_url` = check page, no link to any bridge run |
+| Proposed follow-up | [5 writes](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/43222653056) | [5 writes](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/actions/runs/43222866573) | [check](https://github.com/geographybuff-sandbox/arrow-rs-fork-ci-test/runs/131197981450): summary links the newest bridge run |
+
+**Unit probes.** [`probes/review-1514`](probes/review-1514) runs the action's own harness against three bridges (fork-ci v1.0.0, c800b9d, proposed). The proposed follow-up passes 8 of 8; c800b9d passes 3 and v1.0.0 passes 2. A failing sweep repeated by the same bridge run writes again on v1.0.0 and not on c800b9d or the follow-up. A sweep from a new bridge run writes once on the follow-up, so the check links the newest run. Comment 4's first half does not apply to the current suite: a fake that throws on any update to a check without `html_url` still passes all 67 tests. Comment 5 holds: if the bridge stops sending `details_url`, only 2 tests fail, and both check the request.
+
+**Proposed follow-up.** [`proposed-summary-links.patch`](probes/review-1514/proposed-summary-links.patch) is a local commit on top of c800b9d, not pushed to the PR. It links the fork workflow page and the bridge run in the summaries and checks the stored check in the tests. On c800b9d, 8 of the 68 updated tests fail; with the follow-up, all 68 pass, as do the 21 composite-action tests and prek.

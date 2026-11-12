@@ -1,0 +1,114 @@
+From 82f072fb773c1b504acd0d8e0de35a318449d71f Mon Sep 17 00:00:00 2001
+From: geographybuff <joshuaj1729@gmail.com>
+Date: Thu, 12 Nov 2026 13:00:25 +0000
+Subject: [PATCH] fork-ci: put the workflow and bridge-run links in the
+ summaries
+
+GitHub keeps the check page as details_url for GITHUB_TOKEN writes, so the
+missing-run and API-error checks showed no link at all: only the found-run
+summary carried one. Link the fork workflow page and the bridge run in
+those summaries too. A repeated API error now writes once per new bridge
+run, so the check links the newest failing run; a retry of the same run
+still writes nothing.
+
+Tests now assert on the stored check, not only on the request.
+
+Generated-by: Claude Code (Opus 5.5)
+---
+ fork-ci/bridge.cjs      | 10 ++++++----
+ fork-ci/bridge.test.cjs | 19 ++++++++++++++++++-
+ 2 files changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/fork-ci/bridge.cjs b/fork-ci/bridge.cjs
+index 372f43b..e35f29e 100644
+--- a/fork-ci/bridge.cjs
++++ b/fork-ci/bridge.cjs
+@@ -154,7 +154,7 @@ async function bridge({ github, context, core, config = configuration(), now = D
+       details_url: workflowUrl,
+       output: {
+         title: disabled ? "Workflows are disabled on the fork" : "No fork run for this commit",
+-        summary: `${advice}\n\nThe scheduled sweep will look again.\n\n${explanation}` +
++        summary: `[Open the fork workflow](${workflowUrl}).\n\n${advice}\n\nThe scheduled sweep will look again.\n\n${explanation}` +
+           (config.guide ? `\n\nContributor guide: <${config.guide}>` : ""),
+         text: metadata(pr, null),
+       },
+@@ -163,7 +163,7 @@ async function bridge({ github, context, core, config = configuration(), now = D
+ 
+   async function publish(pr, check, payload) {
+     // GitHub keeps the check page as details_url for GITHUB_TOKEN writes, so a
+-    // stored check never matches the requested link. The summary carries it.
++    // stored check never matches the requested link. Each summary carries its link.
+     if (
+       check && check.status === payload.status &&
+       (check.conclusion ?? null) === (payload.conclusion ?? null) &&
+@@ -206,12 +206,14 @@ async function bridge({ github, context, core, config = configuration(), now = D
+     } catch (error) {
+       // Do not turn permission errors, rate limits, or outages into a missing
+       // run or leave an old green result as the latest observation.
++      const bridgeRun = `${server}/${upstreamName}/actions/runs/${context.runId}`;
+       await publish(pr, check, {
+         status: "completed", conclusion: "action_required",
+-        details_url: `${server}/${upstreamName}/actions/runs/${context.runId}`,
++        details_url: bridgeRun,
+         output: {
+           title: "Cannot read fork CI",
+-          summary: "The bridge could not read the fork API. Inspect the bridge workflow permissions and logs, then retry.\n\n" + explanation,
++          summary: `[Open the bridge run](${bridgeRun}).\n\n` +
++            "The bridge could not read the fork API. Inspect the bridge workflow permissions and logs, then retry.\n\n" + explanation,
+           text: metadata(pr, null),
+         },
+       });
+diff --git a/fork-ci/bridge.test.cjs b/fork-ci/bridge.test.cjs
+index 859145f..fdf85fe 100644
+--- a/fork-ci/bridge.test.cjs
++++ b/fork-ci/bridge.test.cjs
+@@ -105,7 +105,7 @@ function harness(options = {}) {
+     },
+   };
+   const context = {
+-    repo: { owner: "apache", repo: "example" }, runId: 123,
++    repo: { owner: "apache", repo: "example" }, runId: options.runId ?? 123,
+     eventName: options.event || "workflow_run",
+     payload: options.payload || signal,
+   };
+@@ -181,6 +181,7 @@ for (const [state, conclusion] of [["active", "neutral"], ["disabled_fork", "act
+     const h = harness({ runs: [], state });
+     await h.execute();
+     assert.equal(h.writes[0].conclusion, conclusion);
++    assert.ok(h.checks[0].output.summary.includes("https://github.com/contributor/example/actions/workflows/ci.yml"));
+   });
+ }
+ 
+@@ -200,6 +201,7 @@ for (const status of [403, 429, 500]) {
+     assert.equal(result.failed, 1);
+     assert.equal(result.processed, 2);
+     assert.equal(h.writes[0].conclusion, "action_required");
++    assert.ok(h.checks[0].output.summary.includes("https://github.com/apache/example/actions/runs/123"));
+     assert.equal(h.writes.length, 2);
+     assert.equal(h.failures.length, 1);
+     assert.ok(!h.errors.join().includes("untrusted response"));
+@@ -244,6 +246,21 @@ test("deleted fork run clears a previous success and its link", async () => {
+   assert.equal(h.writes[0].method, "update");
+   assert.equal(h.writes[0].conclusion, "neutral");
+   assert.ok(h.writes[0].details_url.endsWith("/actions/workflows/ci.yml"));
++  // GitHub drops the requested link, so check what the stored check shows.
++  assert.ok(!h.checks[0].output.summary.includes("/actions/runs/10"));
++  assert.ok(h.checks[0].output.summary.includes("https://github.com/contributor/example/actions/workflows/ci.yml"));
++});
++
++test("repeated API errors link the newest bridge run, and a retry of that run does not write", async () => {
++  const first = harness({ readError: () => 503 });
++  await first.execute();
++  const retry = harness({ checks: first.checks, readError: () => 503 });
++  await retry.execute();
++  assert.deepEqual(retry.writes, []);
++  const next = harness({ checks: first.checks, readError: () => 503, runId: 124 });
++  await next.execute();
++  assert.equal(next.writes.length, 1);
++  assert.ok(next.checks[0].output.summary.includes("https://github.com/apache/example/actions/runs/124"));
+ });
+ 
+ test("reruns create a fresh active check and later update it", async () => {
+-- 
+2.43.0
+
